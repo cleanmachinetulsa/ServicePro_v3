@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import type { TenantDb } from './tenantDb';
 import { appointments, conversations, messages as messagesTable, customers, jobPhotos, invoices, technicianDeposits, users, customerServiceHistory, services, redeemedRewards } from '@shared/schema';
-import { eq, and, gte, lte, desc, sql, inArray } from 'drizzle-orm';
+import { eq, and, or, gte, lte, desc, sql, inArray } from 'drizzle-orm';
 import { requireTechnician } from './technicianMiddleware';
 import { startOfDay, endOfDay, format } from 'date-fns';
 import multer from 'multer';
@@ -842,7 +842,7 @@ router.post('/jobs/:jobId/complete', requireTechnician, async (req: Request, res
       });
     }
 
-    // Fetch appointment details
+    // Fetch appointment details (join services for S4 invoice confirmation payload)
     const [appointment] = await req.tenantDb!
       .select({
         id: appointments.id,
@@ -851,9 +851,12 @@ router.post('/jobs/:jobId/complete', requireTechnician, async (req: Request, res
         technicianId: appointments.technicianId,
         customerName: customers.name,
         customerPhone: customers.phone,
+        serviceName: services.name,
+        servicePriceRange: services.priceRange,
       })
       .from(appointments)
       .leftJoin(customers, eq(appointments.customerId, customers.id))
+      .leftJoin(services, eq(appointments.serviceId, services.id))
       .where(req.tenantDb!.withTenantFilter(appointments, eq(appointments.id, jobId)))
       .limit(1);
 
@@ -1073,6 +1076,38 @@ router.post('/jobs/:jobId/complete', requireTechnician, async (req: Request, res
     const techName = technician.fullName || technician.username || 'Technician';
     const customerName = appointment.customerName || 'Customer';
 
+    // S2: Send customer-facing completion SMS. Fail-open — never block job completion.
+    // Opt-out enforcement is handled inside sendSMS via conversation lookup.
+    try {
+      if (appointment.customerPhone) {
+        const customerFirstName = appointment.customerName
+          ? appointment.customerName.split(' ')[0]
+          : 'there';
+        // Use preferredName for real techs; fall back to user fullName for admin override.
+        // Only split on spaces when we have a real name — "Your technician" is a
+        // two-word phrase that must not be split to "Your".
+        const techRecord = technician as any;
+        const rawTechName: string | null | undefined =
+          techRecord.preferredName ||
+          (req as any).user?.fullName ||
+          techRecord.fullName;
+        const techFirstName = rawTechName ? rawTechName.split(' ')[0] : 'Your technician';
+        const completionMsg =
+          `Hey ${customerFirstName}, ${techFirstName} just wrapped up your detail! ` +
+          `Your vehicle is looking great. You'll receive your invoice shortly — ` +
+          `thanks for choosing Clean Machine! 🚗✨`;
+        const smsResult = await sendSMS(req.tenantDb!, appointment.customerPhone, completionMsg);
+        if (smsResult.success) {
+          console.log(`[TECH JOBS S2] Customer completion SMS sent for job ${jobId}`);
+        } else {
+          console.warn(`[TECH JOBS S2] Customer completion SMS failed for job ${jobId}: ${smsResult.error}`);
+        }
+      }
+    } catch (completionSmsError) {
+      // Fail open — log but never throw
+      console.error(`[TECH JOBS S2] Unexpected error sending customer completion SMS for job ${jobId}:`, completionSmsError);
+    }
+
     // 5. Send notifications to owner/manager
     try {
       const { shouldSendNotification } = await import('./notificationHelper');
@@ -1133,17 +1168,132 @@ router.post('/jobs/:jobId/complete', requireTechnician, async (req: Request, res
       // Don't fail the request if notifications fail
     }
 
+    // S4: always return requiresInvoiceConfirmation so the frontend can show the
+    // confirm-total modal before firing the invoice send. Deviation 3: null-safe
+    // deposit — depositRecord is null for online/free payment methods.
     res.json({
       success: true,
       invoiceId: result.invoice.id,
-      depositAmount: result.deposit.totalAmount,
+      depositAmount: result.deposit?.totalAmount ?? null,
       message: `Job completed with ${paymentMethod} payment of $${amount.toFixed(2)}`,
+      requiresInvoiceConfirmation: true,
+      customerName: appointment.customerName || 'Customer',
+      serviceName: appointment.serviceName || 'Service',
+      priceRange: appointment.servicePriceRange || '',
+      jobId,
     });
   } catch (error: any) {
     console.error('[TECH JOBS] Error completing job:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to complete job',
+      message: error.message || 'An unexpected error occurred',
+    });
+  }
+});
+
+/**
+ * S4: Send invoice after tech confirms the total amount
+ * POST /api/tech/jobs/:jobId/send-invoice
+ *
+ * Body: { confirmedTotal: number, notes?: string }
+ * - Requires technician auth
+ * - Verifies job belongs to this tenant
+ * - Updates invoice amount with confirmed total
+ * - Calls sendInvoiceNotification (SMS + email) from invoiceService
+ * - Marks invoice sentAt
+ * - Never silently fails
+ */
+router.post('/jobs/:jobId/send-invoice', requireTechnician, async (req: Request, res: Response) => {
+  try {
+    const jobId = parseInt(req.params.jobId);
+    const { confirmedTotal, notes } = req.body;
+    const technician = (req as any).technician;
+
+    if (confirmedTotal === undefined || confirmedTotal === null ||
+        isNaN(Number(confirmedTotal)) || Number(confirmedTotal) < 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'confirmedTotal is required and must be >= 0',
+      });
+    }
+
+    // Verify the job exists within this tenant
+    const [appointment] = await req.tenantDb!
+      .select({
+        id: appointments.id,
+        technicianId: appointments.technicianId,
+        customerName: customers.name,
+      })
+      .from(appointments)
+      .leftJoin(customers, eq(appointments.customerId, customers.id))
+      .where(req.tenantDb!.withTenantFilter(appointments, eq(appointments.id, jobId)))
+      .limit(1);
+
+    if (!appointment) {
+      return res.status(404).json({ success: false, error: 'Job not found' });
+    }
+
+    // Auth: job must be unassigned or owned by this technician
+    if (appointment.technicianId && appointment.technicianId !== technician.id) {
+      return res.status(403).json({
+        success: false,
+        error: 'Cannot send invoice for a job assigned to another technician',
+      });
+    }
+
+    // Find the invoice for this job (most recent, in case of reruns)
+    const [invoice] = await req.tenantDb!
+      .select({ id: invoices.id })
+      .from(invoices)
+      .where(req.tenantDb!.withTenantFilter(invoices, eq(invoices.appointmentId, jobId)))
+      .orderBy(desc(invoices.id))
+      .limit(1);
+
+    if (!invoice) {
+      return res.status(404).json({ success: false, error: 'Invoice not found for this job' });
+    }
+
+    // Update amount with confirmed total and mark sent
+    const invoiceUpdate: Record<string, any> = {
+      amount: Number(confirmedTotal).toString(),
+      invoiceSentAt: new Date(),
+    };
+    if (notes) {
+      invoiceUpdate.notes = notes;
+    }
+
+    await req.tenantDb!
+      .update(invoices)
+      .set(invoiceUpdate)
+      .where(req.tenantDb!.withTenantFilter(invoices, eq(invoices.id, invoice.id)));
+
+    // Fire invoice notification (SMS + email)
+    const { sendInvoiceNotification } = await import('./invoiceService');
+    const tenantId = req.tenant!.id;
+    const sent = await sendInvoiceNotification(tenantId, req.tenantDb!, invoice.id, 'both');
+
+    if (!sent) {
+      console.error(`[TECH JOBS S4] sendInvoiceNotification returned false for invoice ${invoice.id}`);
+      return res.status(500).json({
+        success: false,
+        error: 'Invoice send failed — check server logs for SMS/email errors',
+      });
+    }
+
+    console.log(`[TECH JOBS S4] Invoice ${invoice.id} sent for job ${jobId}, confirmed total $${confirmedTotal}`);
+
+    res.json({
+      success: true,
+      invoiceId: invoice.id,
+      customerName: appointment.customerName || 'Customer',
+      message: 'Invoice sent successfully',
+    });
+  } catch (error: any) {
+    console.error('[TECH JOBS S4] Error sending invoice:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to send invoice',
       message: error.message || 'An unexpected error occurred',
     });
   }

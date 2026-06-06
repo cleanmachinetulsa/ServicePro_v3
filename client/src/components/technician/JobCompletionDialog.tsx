@@ -18,13 +18,14 @@ import { Progress } from '@/components/ui/progress';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { 
-  Loader2, 
-  CheckCircle, 
-  DollarSign, 
-  CreditCard, 
-  Wallet, 
-  FileText, 
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Loader2,
+  CheckCircle,
+  DollarSign,
+  CreditCard,
+  Wallet,
+  FileText,
   Gift,
   Plus,
   Search,
@@ -68,6 +69,17 @@ export function JobCompletionDialog({ job, onClose, onComplete }: JobCompletionD
   const [cashAmount, setCashAmount] = useState('');
   const [checkAmount, setCheckAmount] = useState('');
   const { toast } = useToast();
+
+  // S4: Invoice confirm-total modal state
+  const [invoiceConfirm, setInvoiceConfirm] = useState<{
+    open: boolean;
+    jobId: number;
+    customerName: string;
+    serviceName: string;
+    priceRange: string;
+    confirmedTotal: string;
+    notes: string;
+  } | null>(null);
 
   // Fetch all available services
   const { data: servicesData, isLoading: isLoadingServices } = useQuery<{ success: boolean; services: Service[] }>({
@@ -114,47 +126,75 @@ export function JobCompletionDialog({ job, onClose, onComplete }: JobCompletionD
   const total = subtotal + tax;
 
   // Complete job mutation
+  // S4: No longer pre-sends invoice for online payment — backend returns
+  // requiresInvoiceConfirmation:true and the confirm-total modal fires instead.
   const completeJobMutation = useMutation({
     mutationFn: async ({ method, amount, services }: { method: string; amount: number; services: any[] }) => {
-      // If online payment, send invoice first
-      if (method === 'online') {
-        const serviceNames = services.map(s => `${s.name} ($${s.price.toFixed(2)})`).join(', ');
-        await apiRequest('POST', '/api/dashboard/send-invoice', {
-          customerPhone: job.customerPhone,
-          customerEmail: job.customerEmail || '',
-          customerName: job.customerName,
-          amount: total,
-          service: serviceNames,
-          notes: `Itemized services: ${services.map(s => `${s.name}: $${s.price.toFixed(2)}`).join(' | ')}`,
-        });
-      }
-
-      // Complete the job with payment details
       return await apiRequest('POST', `/api/tech/jobs/${job.id}/complete`, {
-        paymentMethod: method, 
+        paymentMethod: method,
         amount,
         servicesPerformed: services,
       });
     },
-    onSuccess: () => {
-      // Trigger confetti
-      confetti({
-        particleCount: 100,
-        spread: 70,
-        origin: { y: 0.6 }
-      });
-
-      // Invalidate queries
+    onSuccess: (data: any) => {
+      // Invalidate queries regardless of what happens next
       queryClient.invalidateQueries({ queryKey: ['/api/tech/jobs/today'] });
       queryClient.invalidateQueries({ queryKey: ['/api/tech-deposits/today'] });
 
-      // Move to completion step
+      // S4: For online payment, show confirm-total modal before sending invoice
+      if (paymentMethod === 'online' && data?.requiresInvoiceConfirmation) {
+        // Derive midpoint of price range as pre-fill (e.g. "$249–349" → 299)
+        const priceRange: string = data.priceRange || '';
+        const nums = priceRange.match(/\d+/g)?.map(Number) ?? [];
+        const midpoint = nums.length >= 2
+          ? Math.round((nums[0] + nums[nums.length - 1]) / 2)
+          : nums[0] ?? total;
+        setInvoiceConfirm({
+          open: true,
+          jobId: data.jobId ?? job.id,
+          customerName: data.customerName ?? job.customerName,
+          serviceName: data.serviceName ?? '',
+          priceRange,
+          confirmedTotal: String(midpoint),
+          notes: '',
+        });
+        return; // Don't advance to step 5 yet — modal will do it
+      }
+
+      // Non-online payment or no confirmation needed — go straight to success
+      confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
       setStep(5);
     },
     onError: (error: any) => {
       toast({
         title: 'Error',
         description: error.message || 'Failed to complete job',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // S4: Send-invoice mutation (fires from confirm-total modal)
+  const sendInvoiceMutation = useMutation({
+    mutationFn: async ({ jobId, confirmedTotal, notes }: { jobId: number; confirmedTotal: number; notes?: string }) => {
+      return await apiRequest('POST', `/api/tech/jobs/${jobId}/send-invoice`, {
+        confirmedTotal,
+        notes: notes || undefined,
+      });
+    },
+    onSuccess: (data: any) => {
+      setInvoiceConfirm(null);
+      toast({
+        title: 'Invoice sent',
+        description: `Invoice sent to ${data?.customerName ?? 'customer'}.`,
+      });
+      confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+      setStep(5);
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Invoice send failed',
+        description: error.message || 'Could not send invoice. Try again or use Send Later.',
         variant: 'destructive',
       });
     },
@@ -941,5 +981,126 @@ export function JobCompletionDialog({ job, onClose, onComplete }: JobCompletionD
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {/* S4: Confirm Invoice Total modal — shown after job completion for online payments */}
+    {invoiceConfirm && (
+      <Dialog open={invoiceConfirm.open} onOpenChange={(open) => {
+        if (!open) setInvoiceConfirm(null);
+      }}>
+        <DialogContent className="max-w-sm bg-gray-900 border border-gray-700 text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white text-lg">Confirm Invoice Total</DialogTitle>
+            <DialogDescription className="text-gray-400 text-sm">
+              Review the amount before sending the invoice to {invoiceConfirm.customerName}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Customer + service summary */}
+            <div className="rounded-lg bg-gray-800 border border-gray-700 p-3 space-y-1 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-400">Customer</span>
+                <span className="text-white font-medium">{invoiceConfirm.customerName}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-400">Service</span>
+                <span className="text-white font-medium">{invoiceConfirm.serviceName}</span>
+              </div>
+              {invoiceConfirm.priceRange && (
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Price range</span>
+                  <span className="text-gray-300">{invoiceConfirm.priceRange}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Editable amount */}
+            <div className="space-y-1">
+              <Label htmlFor="invoice-confirmed-total" className="text-gray-300 text-sm">
+                Invoice Amount
+              </Label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">$</span>
+                <Input
+                  id="invoice-confirmed-total"
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={invoiceConfirm.confirmedTotal}
+                  onChange={(e) =>
+                    setInvoiceConfirm((prev) => prev ? { ...prev, confirmedTotal: e.target.value } : prev)
+                  }
+                  className="pl-7 bg-gray-800 border-gray-600 text-white placeholder:text-gray-500"
+                  placeholder="0.00"
+                  data-testid="input-invoice-confirmed-total"
+                />
+              </div>
+            </div>
+
+            {/* Optional notes */}
+            <div className="space-y-1">
+              <Label htmlFor="invoice-notes" className="text-gray-300 text-sm">
+                Notes <span className="text-gray-500">(optional)</span>
+              </Label>
+              <Textarea
+                id="invoice-notes"
+                value={invoiceConfirm.notes}
+                onChange={(e) =>
+                  setInvoiceConfirm((prev) => prev ? { ...prev, notes: e.target.value } : prev)
+                }
+                className="bg-gray-800 border-gray-600 text-white placeholder:text-gray-500 resize-none"
+                placeholder="e.g. Added carpet extraction — $100"
+                rows={2}
+                data-testid="textarea-invoice-notes"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="flex flex-col gap-2 sm:flex-col">
+            <Button
+              onClick={() => {
+                const amount = parseFloat(invoiceConfirm.confirmedTotal);
+                if (isNaN(amount) || amount < 0) {
+                  toast({ title: 'Invalid amount', description: 'Enter a valid amount >= $0.', variant: 'destructive' });
+                  return;
+                }
+                sendInvoiceMutation.mutate({
+                  jobId: invoiceConfirm.jobId,
+                  confirmedTotal: amount,
+                  notes: invoiceConfirm.notes || undefined,
+                });
+              }}
+              disabled={sendInvoiceMutation.isPending}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+              data-testid="button-send-invoice"
+            >
+              {sendInvoiceMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Sending…
+                </>
+              ) : (
+                <>
+                  <Send className="mr-2 h-4 w-4" />
+                  Send Invoice
+                </>
+              )}
+            </Button>
+            <button
+              type="button"
+              onClick={() => {
+                setInvoiceConfirm(null);
+                confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } });
+                setStep(5);
+              }}
+              className="text-sm text-gray-400 hover:text-gray-200 underline text-center py-1"
+              data-testid="button-send-later"
+            >
+              Send Later — owner can send from dashboard
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )}
   );
 }
