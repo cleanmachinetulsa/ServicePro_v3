@@ -900,55 +900,43 @@ export default function EnhancedChatbotUI() {
     // Extract vehicle type from context if available
     const vehicleType = extractVehicleType();
 
-    // Base recommendations by service
-    const baseRecommendations = {
-      "Full Detail": "Would you like to add our Leather Protector treatment? It helps maintain the condition of your interior after a Full Detail and extends the life of your leather surfaces.",
-      "Interior Detail": "Consider adding our Excessive Pet Hair Removal service if you have pets with heavy shedding, or our Odor Elimination treatment to keep your interior fresh longer.",
-      "Exterior Detail": "Our Rain Repellent treatment would be a perfect addition to your Exterior Detail. It improves visibility during rain and helps water bead off your windshield.",
-      "Express Wash": "Would you like to upgrade to our Premium Wash? It includes additional wax protection that helps your vehicle stay cleaner longer.",
-      "Ceramic Coating": "Our Headlight Restoration service would complement your Ceramic Coating perfectly, giving your vehicle a completely refreshed look.",
-      "Maintenance Detail Program": "Adding our Wheel Protection service would be a great addition to your Maintenance program, keeping your wheels looking fresh between details."
+    // Base recommendations by current CM-6 service names
+    const baseRecommendations: Record<string, string> = {
+      "Pit Stop": "Want to add our Fabric & Leather Protector ($79)? It seals and protects every surface between visits and extends the life of your interior.",
+      "The Deep Clean": "Consider pairing with Ozone Odor Removal ($75) to freshen the interior after the deep clean, or Carpet & Upholstery Shampoo ($100) for the most thorough interior result.",
+      "Showroom": "Our Fabric & Leather Protector ($79) is the perfect finishing touch — it locks in the clean and protects every interior surface we just detailed.",
+      "Paint Revival": "Pair your Paint Revival with Glass & Windshield Protector ($49) for head-to-toe optical clarity, or add Headlight Restore ($90) for a complete front-end refresh.",
+      "Paint Restoration": "After Paint Restoration, add Headlight Restore ($90) for a completely refreshed exterior look, or Glass & Windshield Protector ($49) for improved visibility.",
+      "Showstopper": "After a Showstopper, Ozone Odor Removal ($75) is the finishing touch that makes the interior match the flawless exterior.",
+      "Force Field": "Headlight Restore ($90) pairs perfectly with Force Field — full paint protection plus crystal-clear lights for a completely refreshed vehicle.",
+      "Force Field Pro": "With Force Field Pro protecting your paint, add Headlight Restore ($90) and Glass & Windshield Protector ($49) for total front-end coverage."
     };
 
-    // Vehicle-specific recommendations
+    // Vehicle-specific recommendations keyed on current CM-6 service names
     const vehicleRecommendations: Record<string, Record<string, string>> = {
       "SUV": {
-        "Full Detail": "For your SUV, we recommend adding our third-row deep cleaning ($25 extra). SUVs with extra rows need special attention to ensure complete detailing.",
-        "Interior Detail": "For SUVs, we recommend adding our Carpet Shampoo with Extra Coverage ($40) - perfect for the larger floor space in your vehicle."
+        "Showroom": "For your SUV, we recommend adding Carpet & Upholstery Shampoo ($100) — the extra floor coverage in SUVs makes a big difference after a full detail.",
+        "The Deep Clean": "For SUVs, Carpet & Upholstery Shampoo ($100) ensures every inch of the larger interior floor space gets the attention it needs."
       },
       "Truck": {
-        "Full Detail": "For your truck, we recommend adding our Bed Liner Treatment ($30) to restore and protect your truck bed alongside your Full Detail.",
-        "Exterior Detail": "For trucks, our Undercarriage Treatment ($45) provides excellent protection against off-road elements and road salt."
+        "Showroom": "For your truck, Engine Bay Detail ($75) rounds out the detail by cleaning up under the hood — a popular add-on for truck owners.",
+        "Pit Stop": "For trucks, Plastic Trim Restore ($65) keeps exterior trim looking sharp between maintenance visits."
       },
       "Luxury": {
-        "Full Detail": "For your luxury vehicle, we recommend our Premium Leather Conditioning package ($55) which uses special products designed specifically for high-end leather.",
-        "Ceramic Coating": "For luxury vehicles, we suggest our Advanced Paint Correction ($150) before applying the ceramic coating for absolutely flawless results."
+        "Showroom": "For your luxury vehicle, our Fabric & Leather Protector ($79) uses premium products formulated to preserve high-end leather and fabric surfaces.",
+        "Force Field": "For luxury vehicles, consider adding Paint Revival ($249) before Force Field — paint correction followed by ceramic protection for truly showroom-grade results.",
+        "Force Field Pro": "For luxury vehicles, Paint Restoration ($399) before Force Field Pro delivers the deepest correction paired with our most durable long-term protection."
       }
-    };
-
-    // Package discount recommendations
-    const packageDiscounts = {
-      "Full Detail": "📦 PACKAGE DEAL: Add both Leather Protector AND Odor Elimination for just $65 (save $10)!",
-      "Interior Detail": "📦 PACKAGE DEAL: Add both Excessive Pet Hair Removal AND Odor Elimination for just $55 (save $10)!",
-      "Exterior Detail": "📦 PACKAGE DEAL: Add both Rain Repellent AND Headlight Restoration for just $70 (save $15)!",
-      "Ceramic Coating": "📦 PACKAGE DEAL: Add both Headlight Restoration AND Wheel Protection for just $95 (save $20)!"
     };
 
     // Choose the most relevant recommendation
     let recommendation = "";
 
-    // If we have a vehicle-specific recommendation, use it
-    if (vehicleType && vehicleRecommendations[vehicleType] && vehicleRecommendations[vehicleType][serviceName]) {
+    if (vehicleType && vehicleRecommendations[vehicleType]?.[serviceName]) {
       recommendation = vehicleRecommendations[vehicleType][serviceName];
     } else {
-      // Otherwise use the base recommendation
-      recommendation = baseRecommendations[serviceName as keyof typeof baseRecommendations] ||
-        "Would you like to enhance your service with add-ons like Leather Protector ($35), Excessive Pet Hair Removal ($25), or Odor Elimination ($40)?";
-    }
-
-    // Add package discount if available
-    if (packageDiscounts[serviceName as keyof typeof packageDiscounts]) {
-      recommendation += "\n\n" + packageDiscounts[serviceName as keyof typeof packageDiscounts];
+      recommendation = baseRecommendations[serviceName] ||
+        "Would you like to enhance your service with add-ons like Fabric & Leather Protector ($79), Ozone Odor Removal ($75), or Headlight Restore ($90)?";
     }
 
     return recommendation;
