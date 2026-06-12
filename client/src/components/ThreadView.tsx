@@ -56,7 +56,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
 import { format, formatDistanceToNow, isToday, isYesterday, isSameDay } from 'date-fns';
-import io from 'socket.io-client';
+import { useMessagingSocket } from '@/contexts/MessagingSocketContext';
 import type { Conversation, Message, QuickReplyCategory, QuickReplyTemplate } from '@shared/schema';
 import BookingPanel from './BookingPanel';
 import MessageBubble from './messages/MessageBubble';
@@ -146,7 +146,8 @@ export default function ThreadView({
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
-  const [socketStatus, setSocketStatus] = useState<'connected' | 'disconnected' | 'reconnecting'>('connected');
+  const { socket: sharedSocket, status: socketStatus } = useMessagingSocket();
+  const [showSocketBanner, setShowSocketBanner] = useState(false);
   const [failedMessage, setFailedMessage] = useState<string | null>(null);
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [uploadingAttachments, setUploadingAttachments] = useState(false);
@@ -159,7 +160,7 @@ export default function ThreadView({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const socketRef = useRef<ReturnType<typeof io> | null>(null);
+  const socketRef = useRef<typeof sharedSocket>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);      // whether we should auto-scroll on new messages
@@ -302,6 +303,9 @@ export default function ThreadView({
   const templateVariables = templateVariablesData?.variables || [];
 
   // iMessage-quality read receipts (Task 24)
+  // Keep socketRef current so emitTyping() and useReadReceipts can use it imperatively
+  socketRef.current = sharedSocket;
+
   const { observeMessage } = useReadReceipts({
     conversationId,
     messages: conversation?.messages || [],
@@ -468,68 +472,45 @@ export default function ThreadView({
     },
   });
 
-  // WebSocket for real-time updates
+  // WebSocket for real-time updates — attaches listeners to the shared socket
   useEffect(() => {
-    const socket = io();
-    socketRef.current = socket;
+    if (!sharedSocket) return;
 
-    socket.on('connect', () => {
-      console.log('[THREAD VIEW] Connected to WebSocket');
-      setSocketStatus('connected');
-      socket.emit('join_conversation', conversationId);
-    });
+    // Join room immediately if already connected, or on next connect
+    if (sharedSocket.connected) {
+      sharedSocket.emit('join_conversation', conversationId);
+    }
 
-    socket.on('disconnect', () => {
-      console.log('[THREAD VIEW] Disconnected from WebSocket');
-      setSocketStatus('disconnected');
-    });
+    const handleConnect = () => {
+      sharedSocket.emit('join_conversation', conversationId);
+    };
 
-    socket.io.on('reconnect_attempt', () => {
-      console.log('[THREAD VIEW] Attempting to reconnect...');
-      setSocketStatus('reconnecting');
-    });
-
-    socket.io.on('reconnect', () => {
-      console.log('[THREAD VIEW] Reconnected to WebSocket');
-      setSocketStatus('connected');
-      socket.emit('join_conversation', conversationId);
-    });
-
-    socket.on('new_message', (data: any) => {
+    const handleNewMessage = (data: any) => {
       if (data.conversationId === conversationId) {
-        console.log('[THREAD VIEW] New message received:', data);
         queryClient.invalidateQueries({ queryKey: [`/api/conversations/${conversationId}`] });
         refetchSuggestions();
       }
-    });
+    };
 
-    socket.on('conversation_updated', (data: any) => {
+    const handleConversationUpdated = (data: any) => {
       if (data.conversationId === conversationId) {
-        console.log('[THREAD VIEW] Conversation updated:', data);
         queryClient.invalidateQueries({ queryKey: [`/api/conversations/${conversationId}`] });
       }
-    });
+    };
 
-    socket.on('control_mode_changed', (data: any) => {
+    const handleControlModeChanged = (data: any) => {
       if (data.conversationId === conversationId) {
-        console.log('[THREAD VIEW] Control mode changed:', data);
         queryClient.invalidateQueries({ queryKey: [`/api/conversations/${conversationId}`] });
       }
-    });
+    };
 
-    // Typing indicator events
-    // Audit T2: Twilio delivery status updates — refresh the conversation
-    // so MessageBubble re-renders with the new deliveryStatus on failed/delivered/sent.
-    socket.on('sms_status_update', (data: { messageSid?: string; status?: string; conversationId?: number; messageId?: number }) => {
-      // Audit T2 follow-up: only refetch when the event matches the active
-      // conversation to avoid refetch churn under high webhook volume.
+    const handleSmsStatusUpdate = (data: { messageSid?: string; status?: string; conversationId?: number; messageId?: number }) => {
       if (typeof data.conversationId === 'number' && data.conversationId !== conversationId) return;
       queryClient.invalidateQueries({ queryKey: [`/api/conversations/${conversationId}`] });
-    });
+    };
 
-    socket.on('user_typing', (data: { conversationId: number; username: string; isTyping: boolean }) => {
+    const handleUserTyping = (data: { conversationId: number; username: string; isTyping: boolean }) => {
       if (data.conversationId === conversationId && data.username !== currentUser?.username) {
-        console.log('[THREAD VIEW] Typing event:', data);
         setTypingUsers(prev => {
           const newSet = new Set(prev);
           if (data.isTyping) {
@@ -540,27 +521,41 @@ export default function ThreadView({
           return newSet;
         });
       }
-    });
+    };
+
+    sharedSocket.on('connect', handleConnect);
+    sharedSocket.on('new_message', handleNewMessage);
+    sharedSocket.on('conversation_updated', handleConversationUpdated);
+    sharedSocket.on('control_mode_changed', handleControlModeChanged);
+    sharedSocket.on('sms_status_update', handleSmsStatusUpdate);
+    sharedSocket.on('user_typing', handleUserTyping);
 
     return () => {
-      // Clean up typing timeout on unmount
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
-      
-      // Emit typing stop before disconnecting
       if (currentUser?.username) {
-        socket.emit('typing_stop', {
-          conversationId,
-          username: currentUser.username,
-        });
+        sharedSocket.emit('typing_stop', { conversationId, username: currentUser.username });
       }
-      
-      socket.emit('leave_conversation', conversationId);
-      socket.disconnect();
-      socketRef.current = null;
+      sharedSocket.emit('leave_conversation', conversationId);
+      sharedSocket.off('connect', handleConnect);
+      sharedSocket.off('new_message', handleNewMessage);
+      sharedSocket.off('conversation_updated', handleConversationUpdated);
+      sharedSocket.off('control_mode_changed', handleControlModeChanged);
+      sharedSocket.off('sms_status_update', handleSmsStatusUpdate);
+      sharedSocket.off('user_typing', handleUserTyping);
     };
-  }, [conversationId, queryClient, currentUser?.username]);
+  }, [conversationId, queryClient, currentUser?.username, sharedSocket]);
+
+  // Only show the disconnected banner after 3 s of non-connected state
+  useEffect(() => {
+    if (socketStatus === 'connected') {
+      setShowSocketBanner(false);
+      return;
+    }
+    const t = setTimeout(() => setShowSocketBanner(true), 3000);
+    return () => clearTimeout(t);
+  }, [socketStatus]);
 
   // ============================================================================
   // PREMIUM SCROLL BEHAVIOR (iMessage/WhatsApp style) - MutationObserver Pattern
@@ -1375,22 +1370,22 @@ export default function ThreadView({
             </div>
           )}
           
-          {/* WebSocket Connection Status Indicator */}
-          {socketStatus !== 'connected' && (
-            <div className={`border-b px-4 py-2.5 text-sm flex items-center gap-2 ${
-              socketStatus === 'disconnected' 
+          {/* WebSocket connection banner — only shown after 3 s of disconnect */}
+          {showSocketBanner && (
+            <div className={`border-b px-3 py-1.5 text-xs flex items-center gap-2 ${
+              socketStatus === 'disconnected'
                 ? 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'
                 : 'bg-yellow-50 dark:bg-yellow-950/30 border-yellow-200 dark:border-yellow-800 text-yellow-700 dark:text-yellow-300'
             }`} data-testid="socket-status-banner">
               {socketStatus === 'disconnected' ? (
                 <>
-                  <div className="h-2 w-2 rounded-full bg-red-500 dark:bg-red-400" />
-                  <span className="font-medium">Connection lost - Messages may not be sent or received</span>
+                  <div className="h-1.5 w-1.5 rounded-full bg-red-500 dark:bg-red-400 flex-shrink-0" />
+                  <span>Connection lost — messages may not deliver</span>
                 </>
               ) : (
                 <>
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  <span className="font-medium">Reconnecting to server...</span>
+                  <Loader2 className="h-3 w-3 animate-spin flex-shrink-0" />
+                  <span>Reconnecting…</span>
                 </>
               )}
             </div>
