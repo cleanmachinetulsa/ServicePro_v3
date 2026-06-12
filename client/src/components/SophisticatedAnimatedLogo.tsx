@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import cleanMachineHeroLogo from '@assets/clean-machine-hero-logo.png';
+const cleanMachineHeroLogo = '/logo.jpg';
 
 export default function SophisticatedAnimatedLogo() {
   return (

@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import logoImage from '@assets/generated_images/Clean_Machine_white_logo_transparent_f0645d6c.png';
+const logoImage = '/logo.jpg';
 import { Settings, LayoutDashboard } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
