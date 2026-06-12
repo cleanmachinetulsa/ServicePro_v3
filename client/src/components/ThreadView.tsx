@@ -83,7 +83,7 @@ interface ThreadViewProps {
   conversationId: number;
   onBack?: () => void;
   hideHeader?: boolean;
-  
+  suppressCompactHeader?: boolean;
   messageReactionSlot?: (message: Message) => React.ReactNode;
   scheduledMetaSlot?: (message: Message) => React.ReactNode;
   deliveryIndicatorSlot?: (message: Message) => React.ReactNode;
@@ -123,10 +123,11 @@ function groupMessagesByDate(messages: Message[]): Array<{ date: Date; messages:
   return groups;
 }
 
-export default function ThreadView({ 
+export default function ThreadView({
   conversationId,
   onBack,
   hideHeader = false,
+  suppressCompactHeader = false,
   messageReactionSlot,
   scheduledMetaSlot,
   deliveryIndicatorSlot,
@@ -1160,7 +1161,7 @@ export default function ThreadView({
 
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-950">
-      {/* COMPACT HEADER - Google Messages style */}
+      {!suppressCompactHeader && (
       <div className="flex-shrink-0 flex items-center gap-2 px-2 py-2 border-b dark:border-gray-800 bg-white dark:bg-gray-900">
         {/* Back button - mobile only */}
         {onBack && (
@@ -1327,7 +1328,8 @@ export default function ThreadView({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      
+      )}
+
       {/* Search bar - slides in when needed */}
       {showSearch && (
         <div className="flex-shrink-0 px-3 py-2 border-b dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">

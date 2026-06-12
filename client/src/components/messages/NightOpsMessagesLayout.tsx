@@ -6,8 +6,6 @@ import {
   PhoneCall,
   Sparkles,
   User2,
-  X,
-  PanelRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,7 +18,7 @@ import {
 
 type NightOpsMessagesLayoutProps = {
   conversationList: React.ReactNode;
-  threadView: React.ReactNode;
+  threadView: (onMobileBack: () => void) => React.ReactNode;
   contextPanel: React.ReactNode;
   showContextPanel?: boolean;
   onToggleContextPanel?: () => void;
@@ -159,7 +157,7 @@ export const NightOpsMessagesLayout: React.FC<NightOpsMessagesLayoutProps> = ({
           </div>
 
           <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
-            {threadView}
+            {threadView(() => setMobileView('inbox'))}
           </div>
         </motion.section>
       </main>
@@ -207,48 +205,7 @@ export const NightOpsMessagesLayout: React.FC<NightOpsMessagesLayoutProps> = ({
               transition={{ duration: 0.2 }}
               className="flex-1 min-h-0 flex flex-col bg-slate-950"
             >
-              <div className="flex items-center justify-between border-b border-slate-700/60 px-4 py-3 bg-slate-950/80">
-                <div className="flex items-center gap-3">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setMobileView('inbox')}
-                    className="text-slate-400 hover:text-cyan-300 -ml-2"
-                    data-testid="button-back-to-inbox"
-                  >
-                    ← Back
-                  </Button>
-                  <div className="nightops-section-title">Thread</div>
-                </div>
-                <Sheet open={showMobileContext} onOpenChange={setShowMobileContext}>
-                  <SheetTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-slate-400 hover:text-cyan-300"
-                      data-testid="button-show-context-mobile"
-                    >
-                      <User2 className="h-4 w-4" />
-                    </Button>
-                  </SheetTrigger>
-                  <SheetContent 
-                    side="right" 
-                    className="w-[85vw] max-w-[400px] bg-slate-950 border-slate-800 p-0"
-                  >
-                    <SheetHeader className="px-4 py-3 border-b border-slate-700/60">
-                      <SheetTitle className="nightops-section-title text-slate-100">
-                        Customer Context
-                      </SheetTitle>
-                    </SheetHeader>
-                    <div className="nightops-scroll overflow-y-auto h-[calc(100vh-80px)] px-4 py-3">
-                      {contextPanel}
-                    </div>
-                  </SheetContent>
-                </Sheet>
-              </div>
-              <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
-                {threadView}
-              </div>
+              {threadView(() => setMobileView('inbox'))}
             </motion.div>
           )}
         </AnimatePresence>

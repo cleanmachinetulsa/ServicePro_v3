@@ -49,7 +49,7 @@ interface BulkActionPayload {
 
 import { NightOpsMessagesLayout } from '@/components/messages/NightOpsMessagesLayout';
 import { NightOpsConversationList } from '@/components/messages/NightOpsConversationList';
-import { NightOpsThreadView } from '@/components/messages/NightOpsThreadView';
+import { NightOpsThreadPanel } from '@/components/messages/NightOpsThreadPanel';
 import { NightOpsContextPanel } from '@/components/messages/NightOpsContextPanel';
 import Composer from '@/components/messages/Composer';
 import { useToast } from '@/hooks/use-toast';
@@ -486,10 +486,11 @@ function MessagesPageContent() {
     />
   );
 
-  const threadViewNode = (
-    <NightOpsThreadView
+  const threadViewNode = (onMobileBack: () => void) => (
+    <NightOpsThreadPanel
       conversationId={selectedConversation}
       onBack={() => setSelectedConversation(null)}
+      onMobileBack={onMobileBack}
       onTakeOver={handleTakeOver}
       controlMode={
         (selectedConv?.controlMode as
