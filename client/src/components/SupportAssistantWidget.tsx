@@ -42,8 +42,7 @@ const PUBLIC_ROUTE_PREFIXES = [
 ];
 
 const HIDDEN_ROUTES: string[] = [
-  // Empty for now - widget should be available on all authenticated pages
-  // If specific pages need hiding, add them here
+  '/messages',
 ];
 
 const FAB_POSITION_KEY = 'support_assistant_fab_pos';

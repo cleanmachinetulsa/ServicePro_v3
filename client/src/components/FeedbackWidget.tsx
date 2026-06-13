@@ -7,6 +7,7 @@
  */
 
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { 
   Dialog, 
@@ -46,7 +47,9 @@ const categories = [
 ];
 
 export default function FeedbackWidget() {
+  const [location] = useLocation();
   const [isOpen, setIsOpen] = useState(false);
+  if (location.startsWith('/messages')) return null;
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState<string>("bug");
   const [message, setMessage] = useState("");

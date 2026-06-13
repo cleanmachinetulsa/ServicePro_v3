@@ -1586,7 +1586,7 @@ export default function ThreadView({
 
           {/* Message Input - Always Visible */}
           {/* pb uses max() so the composer lifts above the iOS soft keyboard */}
-          <div className="shrink-0 border-t dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-3" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
+          <div className="shrink-0 border-t border-slate-800 bg-slate-900 px-3 py-3" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
               {/* Phone line indicator - only show warning if mismatched */}
               {conversation?.platform === 'sms' && activeLine && 
                 conversation.phoneLineId && conversation.phoneLineId !== activeSendLineId && (
@@ -1616,7 +1616,7 @@ export default function ThreadView({
                 </div>
               )}
               
-              <div className="flex gap-2.5 max-w-4xl mx-auto items-end">
+              <div className="flex flex-wrap items-end gap-2 max-w-4xl mx-auto lg:flex-nowrap lg:gap-2.5">
                 {/* Hidden file input */}
                 <input
                   ref={fileInputRef}
@@ -1626,11 +1626,11 @@ export default function ThreadView({
                   className="hidden"
                   data-testid="input-file-attachment"
                 />
-                
+
                 {/* Attachment Button - iMessage Style */}
                 <Button
                   variant="ghost"
-                  className="h-11 w-11 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors p-0 flex items-center justify-center"
+                  className="h-10 w-10 lg:h-11 lg:w-11 rounded-full bg-slate-800/60 hover:bg-slate-700 lg:bg-transparent lg:hover:bg-gray-800 transition-colors p-0 flex items-center justify-center"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploadingAttachments || selectedFiles.length > 0}
                   data-testid="button-attach-file"
@@ -1638,8 +1638,8 @@ export default function ThreadView({
                 >
                   <Paperclip className="h-5 w-5 text-gray-600 dark:text-gray-400" />
                 </Button>
-                
-                <div className="flex-1 relative min-w-0">
+
+                <div className="w-full order-first min-w-0 relative lg:w-auto lg:flex-1 lg:order-none">
                   <Textarea
                     ref={textareaRef}
                     value={messageInput}
@@ -1678,7 +1678,7 @@ export default function ThreadView({
                   <PopoverTrigger asChild>
                     <Button
                       variant="ghost"
-                      className="h-11 w-11 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors p-0 flex items-center justify-center"
+                      className="h-10 w-10 lg:h-11 lg:w-11 rounded-full bg-slate-800/60 hover:bg-slate-700 lg:bg-transparent lg:hover:bg-gray-800 transition-colors p-0 flex items-center justify-center"
                       data-testid="button-template-variables"
                       title="Insert template variable"
                     >
@@ -1764,7 +1764,7 @@ export default function ThreadView({
                       onClick={handleSendMessage}
                       disabled={!messageInput.trim() || sendMessageMutation.isPending}
                       title={cfg.label}
-                      className={`h-11 px-4 gap-1.5 ${cfg.cls} text-white rounded-full shadow-md hover:shadow-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center disabled:bg-gray-300 dark:disabled:bg-gray-700`}
+                      className={`ml-auto lg:ml-0 h-11 px-4 gap-1.5 ${cfg.cls} text-white rounded-full shadow-md hover:shadow-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center disabled:bg-gray-300 dark:disabled:bg-gray-700`}
                       data-testid={`button-send-${platform}`}
                     >
                       {sendMessageMutation.isPending ? (
