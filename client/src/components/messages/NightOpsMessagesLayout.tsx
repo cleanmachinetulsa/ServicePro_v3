@@ -56,6 +56,9 @@ export const NightOpsMessagesLayout: React.FC<NightOpsMessagesLayoutProps> = ({
                 <span className="rounded-full bg-cyan-500/10 px-2 py-0.5 text-[0.65rem] font-medium text-cyan-300 ring-1 ring-cyan-500/40">
                   Messaging Hub v2
                 </span>
+                <span className="bg-red-500 text-white px-2 rounded text-[0.65rem] font-bold">
+                  BUILD-CHECK-7Q9
+                </span>
               </div>
               <h1 className="text-sm font-semibold text-slate-100 md:text-base">
                 Conversations & Dispatch
