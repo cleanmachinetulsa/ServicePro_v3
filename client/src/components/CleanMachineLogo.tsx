@@ -1,4 +1,4 @@
-import logoImage from '@assets/clean-machine-logo.png';
+const logoImage = '/logo.jpg';
 
 interface LogoProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';

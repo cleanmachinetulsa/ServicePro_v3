@@ -31,8 +31,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import io from 'socket.io-client';
 import { shouldHandleHotkey } from '@/lib/messagesHotkeys';
+import { MessagingSocketProvider, useMessagingSocket } from '@/contexts/MessagingSocketContext';
 
 // Audit T3 Task #21: bulk-action contracts shared between page and API
 interface StaffUser {
@@ -49,7 +49,7 @@ interface BulkActionPayload {
 
 import { NightOpsMessagesLayout } from '@/components/messages/NightOpsMessagesLayout';
 import { NightOpsConversationList } from '@/components/messages/NightOpsConversationList';
-import { NightOpsThreadView } from '@/components/messages/NightOpsThreadView';
+import { NightOpsThreadPanel } from '@/components/messages/NightOpsThreadPanel';
 import { NightOpsContextPanel } from '@/components/messages/NightOpsContextPanel';
 import Composer from '@/components/messages/Composer';
 import { useToast } from '@/hooks/use-toast';
@@ -249,18 +249,16 @@ function MessagesPageContent() {
     }
   };
 
+  const { socket: sharedSocket } = useMessagingSocket();
+
   useEffect(() => {
-    const socket = io();
+    if (!sharedSocket) return;
 
-    socket.on('connect', () => {
-      console.log('[MESSAGES] Connected to WebSocket');
-      socket.emit('join_monitoring');
-    });
-
-    socket.on('new_message', () => {
+    const handleConnect = () => {
+      sharedSocket.emit('join_monitoring');
+    };
+    const handleNewMessage = () => {
       queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });
-      // Audit T3 Task #21: also refresh per-thread AI cost + summary so the
-      // ContextPanel/SummaryBanner reflect newly delivered messages.
       if (selectedConversation) {
         queryClient.invalidateQueries({
           queryKey: ['/api/conversations', selectedConversation, 'summary'],
@@ -269,21 +267,28 @@ function MessagesPageContent() {
           queryKey: ['/api/conversations', selectedConversation, 'ai-usage'],
         });
       }
-    });
-
-    socket.on('conversation_updated', () => {
+    };
+    const handleConversationUpdated = () => {
       queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });
-    });
-
-    socket.on('control_mode_changed', () => {
+    };
+    const handleControlModeChanged = () => {
       queryClient.invalidateQueries({ queryKey: ['/api/conversations'] });
-    });
+    };
+
+    if (sharedSocket.connected) handleConnect();
+    sharedSocket.on('connect', handleConnect);
+    sharedSocket.on('new_message', handleNewMessage);
+    sharedSocket.on('conversation_updated', handleConversationUpdated);
+    sharedSocket.on('control_mode_changed', handleControlModeChanged);
 
     return () => {
-      socket.emit('leave_monitoring');
-      socket.disconnect();
+      sharedSocket.emit('leave_monitoring');
+      sharedSocket.off('connect', handleConnect);
+      sharedSocket.off('new_message', handleNewMessage);
+      sharedSocket.off('conversation_updated', handleConversationUpdated);
+      sharedSocket.off('control_mode_changed', handleControlModeChanged);
     };
-  }, [queryClient]);
+  }, [queryClient, sharedSocket]);
 
   const selectedConv = conversations.find(c => c.id === selectedConversation);
   const { customerInfo, isLoading: isLoadingCustomer } = useCustomerSidebarData(selectedConversation);
@@ -481,10 +486,11 @@ function MessagesPageContent() {
     />
   );
 
-  const threadViewNode = (
-    <NightOpsThreadView
+  const threadViewNode = (onMobileBack: () => void) => (
+    <NightOpsThreadPanel
       conversationId={selectedConversation}
       onBack={() => setSelectedConversation(null)}
+      onMobileBack={onMobileBack}
       onTakeOver={handleTakeOver}
       controlMode={
         (selectedConv?.controlMode as
@@ -759,8 +765,10 @@ function MessagesPageContent() {
 
 export default function MessagesPage() {
   return (
-    <PhoneLineProvider>
-      <MessagesPageContent />
-    </PhoneLineProvider>
+    <MessagingSocketProvider>
+      <PhoneLineProvider>
+        <MessagesPageContent />
+      </PhoneLineProvider>
+    </MessagingSocketProvider>
   );
 }

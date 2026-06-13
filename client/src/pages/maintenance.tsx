@@ -3,8 +3,6 @@ import { useLocation } from "wouter";
 import { AlertCircle, Wrench, Mail, Phone } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import logoUrl from "@assets/ab_Clean4-03.jpg";
-
 export default function Maintenance() {
   const [, setLocation] = useLocation();
   const [message, setMessage] = useState("");
@@ -40,9 +38,9 @@ export default function Maintenance() {
       <Card className="max-w-2xl w-full shadow-xl">
         <CardHeader className="text-center space-y-4">
           <div className="flex justify-center mb-4">
-            <img 
-              src={logoUrl} 
-              alt="Clean Machine Logo" 
+            <img
+              src="/logo.jpg"
+              alt="Clean Machine Logo"
               className="h-20 w-20 object-contain"
             />
           </div>

@@ -21,9 +21,9 @@ import {
   Shield,
   MessageSquare
 } from "lucide-react";
-import logoBlue from '@assets/generated_images/Clean_Machine_logo_blue_0f30335d.png';
-import logoBadge from '@assets/generated_images/Clean_Machine_badge_circular_ff904963.png';
-import logoShield from '@assets/generated_images/Clean_Machine_shield_hexagonal_89fc94d0.png';
+const logoBlue = '/logo.jpg';
+const logoBadge = '/logo.jpg';
+const logoShield = '/logo.jpg';
 import { 
   Select,
   SelectContent,
