@@ -9,6 +9,7 @@ import { eq, asc, and } from 'drizzle-orm';
 import { shouldRouteToLegacyCleanMachine, forwardToLegacyCleanMachine } from '../services/smsRouter';
 import { inferLanguageFromText, SupportedLanguage } from '../utils/translator';
 import { recordProcessedInboundSms } from '../services/smsInboundDedup';
+import { broadcastNewMessage } from '../websocketService';
 import { 
   detectSlotSelection, 
   getSmsBookingState,
@@ -53,6 +54,7 @@ async function getOrCreateTestConversation(tenantDb: any, phone: string) {
       and(
         eq(conversations.customerPhone, phone),
         eq(conversations.platform, 'sms'),
+        eq(conversations.status, 'active'),
       ),
     ),
   });
@@ -208,7 +210,7 @@ async function addMessage(
   }
 
   // Insert the message
-  await tenantDb
+  const [newMessage] = await tenantDb
     .insert(messagesTable)
     .values({
       conversationId,
@@ -218,13 +220,19 @@ async function addMessage(
       platform: 'sms',
       timestamp: now,
       ...(finalMetadata ? { metadata: finalMetadata } : {}),
-    });
-  
+    })
+    .returning();
+
   // Update conversation's last_message_time so it appears in the messages list
   await tenantDb
     .update(conversations)
     .set({ lastMessageTime: now })
     .where(eq(conversations.id, conversationId));
+
+  // Broadcast to hub so the inbox and open thread update in real-time
+  if (newMessage) {
+    broadcastNewMessage(conversationId, newMessage);
+  }
 }
 
 import { isSmsTestNumber } from '../services/smsTestAllowlist';
