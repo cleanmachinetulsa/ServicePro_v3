@@ -248,7 +248,11 @@ async function handleServiceProInboundSms(req: Request, res: Response, dedupeMes
     // SMS-AUDIT-T1 (S-2): Synchronous dedup BEFORE any LLM/booking work.
     // Twilio retries can arrive within ~50ms; fire-and-forget insert lets
     // both retries pass dedup and double-bills the LLM. Await + check result.
-    if (messageSid) {
+    //
+    // Skip when dedupeMessageSid is provided — the outer route gate already
+    // recorded this SID and passed through. Re-recording here would poison
+    // every first delivery (onConflictDoNothing returns 0 rows → false → drop).
+    if (messageSid && !dedupeMessageSid) {
       const isNew = await recordProcessedInboundSms(messageSid, From, To, 'root');
       if (!isNew) {
         console.log(`[TWILIO SMS INBOUND] Duplicate retry sid=${messageSid} - returning empty TwiML`);
